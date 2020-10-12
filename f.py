@@ -10,6 +10,50 @@ import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import DivergingNorm, Normalize
 
+from io import StringIO
+from pydotplus import graph_from_dot_data
+from sklearn.tree import export_graphviz 
+from IPython.display import Image, display
+
+# Data Structures
+#################
+
+id2bv = {'01': 'annual mean temperature',
+         '02': 'mean diurnal range',
+         '03': 'isothermality',
+         '04': 'temperature seasonality',
+         '05': 'max temperature of warmest month',
+         '06': 'min temperature of coldest month',
+         '07': 'annual temperature range',
+         '08': 'mean temperature of wettest quarter',
+         '09': 'mean temperature of driest quarter',
+         '10': 'mean temperature of warmest quarter',
+         '11': 'mean temperature of coldest quarter',
+         '12': 'annual precipitations',
+         '13': 'precipitations of wettest month',
+         '14': 'precipitations of driest month',
+         '15': 'precipitation seasonality',
+         '16': 'precipitations of wettest quarter',
+         '17': 'precipitations of driest quarter',
+         '18': 'precipitations of driest quarter',
+         '19': 'precipitations of driest quarter'}
+
+bv_cols = ['BIO01_Centroid','BIO02_Centroid','BIO03_Centroid','BIO04_Centroid',
+           'BIO05_Centroid','BIO06_Centroid','BIO07_Centroid','BIO08_Centroid',
+           'BIO09_Centroid','BIO10_Centroid','BIO11_Centroid','BIO12_Centroid',
+           'BIO13_Centroid','BIO14_Centroid','BIO15_Centroid','BIO16_Centroid',
+           'BIO17_Centroid','BIO18_Centroid','BIO19_Centroid']
+
+bv_ids = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
+          '11', '12', '13', '14', '15', '16', '17', '18', '19']
+
+
+# GeoDataFrame containing the map of the world
+world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+
+
+# Functions
+###########
 
 def ImportLandData(year, res, data_dir, centroids_dir, stats = True):
     # Import hexagon centroids coordinate in a geodataframe
@@ -303,26 +347,33 @@ def Whiskers(data):
     return min_w, max_w
 
 
-def GeoPlot(GDF, col, cmap, boundary_color = 'white',
+def GeoPlot(GDF, col, cmap = 'viridis', marker_size = 13,
+            boundary_color = 'white', land_color = "whitesmoke", 
             centred = False, outliers = False, vmin = None, vmax = None,
-            save = False, plot_dir = 'Output/Plots', title = 'GeoPlot.jpg',
+            save = False, plot_dir = 'Output/Plots', title = 'GeoPlot',
             Antarctica = True):
     """
     INPUT:
       - GDF -> GeoDataFrame with geometry column and other data columns
       - col -> name of the column containing data to plot. (string)
       - cmap -> colormap name (string)
-      - boundary_color -> countries' borders color. (string)
-      - centred -> If data are spread around zero, a diverging colormap will be centred on zero. (bool)
-                   It is useful in case of temperatures, when 0 is the reference temperature.
+      - marker_size -> size of data points on the map. (int)
+      - boundary_color -> countries' borders colour. (string)
+      - land_color -> lands colour. (string)
+      - centred -> If data are spread around zero, a diverging colormap will be 
+                   centred on zero. (bool) It is useful in case of diverging 
+                   measures aroung a reference value, like temperatures around 0
       - outliers -> Remove outliers from the range covered by the colormap.
-                    They will be represented with the same colour of the minimum or maximum value
-                    represented in the colormap. (bool)
-                    This is useful when the presence of outliers makes the other values
+                    They will be represented with the same colour of the minimum
+                    or maximum value represented in the colormap. (bool) This is
+                    useful when the presence of outliers makes the other values
                     indistinguishable by their colour in the plot.
+      - vmin, vmax -> Minimum and maximum values considered in the colormap's
+                      range. (int) Smaller or larger values are represented with
+                      same colour of the minimum and maximum values respectively.
       - save -> Choose to save or not the plot. (bool)
       - plot_dir -> Saving directory for the plot. (path string)
-      - title -> Name of the plot file. (string)
+      - title -> Name of the plot file (no file extension). (string)
       - Antarctica -> Choose to plot of not the Antartic continent. (bool)
     """
 
@@ -333,7 +384,7 @@ def GeoPlot(GDF, col, cmap, boundary_color = 'white',
         world = world[(world.name!="Antarctica")]
         GDF = RemoveAntarctica(GDF)
 
-    # Remove outliers from the colormap and center the colormap on zero if needed
+    # Remove outliers from the colormap and centre the colormap on 0 if needed
     if outliers:
         min_w, max_w = Whiskers(GDF[col])
         if centred:
@@ -360,11 +411,11 @@ def GeoPlot(GDF, col, cmap, boundary_color = 'white',
         GDF.plot(column = col, zorder = 2, ax = ax,
                  cmap = cmap, norm = norm, cax = cax,
                  legend = True, legend_kwds = {'orientation': 'horizontal'},
-                 markersize = 10, marker = 'h')
+                 markersize = marker_size, marker = 'h')
 
         # Plot of the world on the backgroud
-        world.plot(ax = ax, facecolor = "whitesmoke",
-                   edgecolor = "none", zorder = 1).set_facecolor('#A8C5DD')
+        world.plot(ax = ax, facecolor = land_color,
+                   edgecolor = "none", zorder = 1).set_facecolor('#adcfeb')#('#A8C5DD')
         # Plot of the countries' borders on the foreground
         world.boundary.plot(ax = ax, color = boundary_color, zorder = 3)
 
@@ -437,35 +488,63 @@ def EmpiricalDistribution(data, col, check_na = True,
 def RemoveAntarctica(data):
     return data[data.geometry.y>-60].copy()
 
+def OneSeRuleCcpAlpha(GS_OUT, k):
+    """
+    INPUT:
+      - GS_OUT -> Results of a gridsearch. (dataframe)
+      - k -> number of folds in cross-validation. (int)
+    
+    OUTPUT:
+     - best_1se_alpha, best_1se_mse -> ccp alpha obtained with the 1-standard-
+       error rule and corresponding estimated test error via CV.
+       In case it is not possible to identify such alpha, returns the best alpha
+       and its estimated test error. (float, float)
+    """
+    
+    R = GS_OUT.copy()
+    R[[f'split{i}_test_score' for i in range(k)]+['mean_test_score']] *=-1
 
-id2bv = {'01': 'annual mean temperature',
-         '02': 'mean diurnal range',
-         '03': 'isothermality',
-         '04': 'temperature seasonality',
-         '05': 'max temperature of warmest month',
-         '06': 'min temperature of coldest month',
-         '07': 'annual temperature range',
-         '08': 'mean temperature of wettest quarter',
-         '09': 'mean temperature of driest quarter',
-         '10': 'mean temperature of warmest quarter',
-         '11': 'mean temperature of coldest quarter',
-         '12': 'annual precipitations',
-         '13': 'precipitations of wettest month',
-         '14': 'precipitations of driest month',
-         '15': 'precipitation seasonality',
-         '16': 'precipitations of wettest quarter',
-         '17': 'precipitations of driest quarter',
-         '18': 'precipitations of driest quarter',
-         '19': 'precipitations of driest quarter'}
+    best_id = R[R.rank_test_score == 1].index.item()
+    # best_id = R.mean_test_score.idxmin()
+    best_mse = R.loc[best_id].mean_test_score.item()
+    best_alpha = R.loc[best_id].param_ccp_alpha.item()
+    best_se = R.loc[best_id].std_test_score.item()/np.sqrt(10)
+    
+    R_SE = R[(R.param_ccp_alpha > best_alpha) & (R.mean_test_score <= best_mse+best_se)]
+    if R_SE.empty:
+        print("No 1-standard-error complexity parameter can be obtained."
+              "The best alpha has been returned instead.")
+        return best_alpha, best_mse
+    else:
+        best_1se_alpha = R_SE[R_SE.param_ccp_alpha == R_SE.param_ccp_alpha.max()].param_ccp_alpha.item()
+        best_1se_mse = R_SE[R_SE.param_ccp_alpha == R_SE.param_ccp_alpha.max()].mean_test_score.item()
+        return best_1se_alpha, best_1se_mse
 
-bv_cols = ['BIO01_Centroid','BIO02_Centroid','BIO03_Centroid','BIO04_Centroid',
-           'BIO05_Centroid','BIO06_Centroid','BIO07_Centroid','BIO08_Centroid',
-           'BIO09_Centroid','BIO10_Centroid','BIO11_Centroid','BIO12_Centroid',
-           'BIO13_Centroid','BIO14_Centroid','BIO15_Centroid','BIO16_Centroid',
-           'BIO17_Centroid','BIO18_Centroid','BIO19_Centroid']
+def VisualiseTree(dtr, md, fn=[f[:5] for f in bv_cols],
+                  save=False, plot_dir = 'Output/Plots', title = 'DTR'):
+    """
+    INPUT:
+     - dtr -> regression tree. (tree object)
+     - md -> maximum depth to be visualised. (int)
+     - fn -> names of the features as represented in the tree. (list of strings)
+     - save_plot -> Choose to save or not the plots. (bool)
+     - plot_dir -> Saving directory for the plots. (path string)
+     - title -> Name of the plot files (No file extension). (string)
+    """
+    
+    # Create an empty object to receive a string buffer in DOT format.
+    dot_data = StringIO()
 
-bv_ids = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
-          '11', '12', '13', '14', '15', '16', '17', '18', '19']
+    # Exports the tree in DOT format into the out_file
+    export_graphviz(dtr, out_file=dot_data, max_depth=md, feature_names=fn,
+                    proportion=True, filled=True, rounded=True)
 
-# Import the GeoDataFrame containing the map of the world
-world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+    # Use the DOT object to create the graph.
+    tree = graph_from_dot_data(dot_data.getvalue())
+
+    if save: tree.write_png(os.path.join(plot_dir, f"{title}.png"))
+
+    display(Image(tree.create_png()))
+
+
+
