@@ -11,7 +11,7 @@ from matplotlib.colors import TwoSlopeNorm, Normalize
 from io import StringIO
 from pydotplus import graph_from_dot_data
 from sklearn.tree import export_graphviz 
-from IPython.display import Image, display
+from IPython.display import Image, display, Markdown
 from sklearn.model_selection import ParameterGrid
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error as mse
@@ -139,8 +139,67 @@ def ImportData(year, resolution, data_dir, land=False, stats=False):
                     
         return hexagons
     
-    
-    
+
+
+def EmpiricalDistribution(data, figsize=(15, 8), show=True, save=False,
+                          plot_dir='Output/Plots', title='ED', save_params={}):
+    """
+    INPUT:
+     - data -> Data vector (Series or array-like) 
+     - figsize -> Size of the figure object. (tuple of int: (width, height))
+     - show -> Choose whether or not to display the plot. (bool) 
+     - save -> Choose whether or not to save the plot. (bool)
+     - plot_dir -> Plot saving directory. (path string)
+     - title -> Name of the plot file without file extension. (string)
+     - save_params -> Parameters for the saving operation. (dict)                
+    """
+
+    # Default values for parameter dictionaries:
+    # save_params
+    SP = {'format': 'jpg'}
+
+    # Update parameter dictionaries with user choices
+    SP.update(save_params)
+
+    # Remove NA values if needed
+    NA_mask = data > -100
+    data = data[NA_mask]
+    n_NA = (~NA_mask).sum()
+    if n_NA > 0:
+        display(Markdown(f"There are {n_NA} not avalable data points"))
+
+    fig = plt.figure(figsize=figsize)
+    gs = plt.GridSpec(nrows=2, ncols=2, figure=fig)
+    ax0 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[0, 1])
+    ax2 = fig.add_subplot(gs[1, :])
+
+    # Frequency histogram
+    bw = (data.max()-data.min())/100
+    sns.histplot(data=data, color='darkblue', binwidth=bw, ax=ax0)
+    ax0.set(xlabel='', ylabel='Counts')
+
+    # Density histogram
+    sns.kdeplot(x=data, color='darkblue', fill=True, ax=ax1)
+    ax1.set(xlabel='', ylabel='Density')
+
+    # Boxplot
+    sns.boxplot(x=data, color='skyblue', fliersize=3, ax=ax2)
+    ax2.set_xlabel('')
+
+    fig.tight_layout()
+
+    # Save the plot if needed
+    if save:
+        # Output file directory
+        file_dir = os.path.join(plot_dir, f"{title}.{SP['format']}")
+        plt.savefig(file_dir, **SP)
+    # Prevent display of the plot if needed
+    if not show:
+        plt.close()
+        
+        
+        
 def ConvertScores(GS, cv, convertion):
     
     """
@@ -549,7 +608,7 @@ def GeoPlot(GDF, col, ax=None, figsize=(50, 27), Antarctica=True,
             if ax is None:
                 fig, ax = plt.subplots(figsize=figsize)
 
-            # # Legend adjustments if colorbar must be displayed
+            # Legend adjustments if colorbar must be displayed
             if PP['legend']:
                 divider = make_axes_locatable(ax)
                 cax = divider.append_axes("bottom", size="5%", pad=0.1)
@@ -1442,60 +1501,7 @@ def Index2RowNum(tv_ids, data):
 
                 
 
-def EmpiricalDistribution(data, col, check_na = True,
-                          save = False, plot_dir = 'Output/Plots', title = ''):
-    """
-    INPUT:
-      - data -> (Geo)DataFrame with multiple data columns
-      - col -> name of the column containing data to analyse. (string)
-      - save -> Choose to save or not the plots. (bool)
-      - plot_dir -> Saving directory for the plots. (path string)
-      - title -> Name of the plot files. (string)
-    """
-    # Remove NA values if needed
-    if check_na:
-        BV = data.loc[data[col]>-100, col].copy()
-    else: BV = data[col].copy()
 
-    d = data.shape[0] - BV.shape[0]
-    if d>0:
-        print(f'This feature has {d} not available values.')
-
-    fig, ax = plt.subplots(ncols = 2, figsize = (16,4))
-
-    # Frequency histogram
-    sns.distplot(BV, hist = True, kde = False, ax = ax[0], axlabel = False )
-    ax[0].set_ylabel('Frequency')
-
-    # Density histogram
-    sns.distplot(BV, hist = True, kde = True, color = 'darkblue',
-                 ax = ax[1], axlabel = False )
-    ax[1].set_ylabel('Density')
-
-    fig.tight_layout()
-    if save:
-        plt.savefig(os.path.join(plot_dir, f'{title}_EmpDist.jpg'), optimize = True,
-                    box_inches = 'tight', dpi = 200)
-
-    fig, ax = plt.subplots(figsize = (16,4))
-
-    # Boxplot
-    sns.boxplot(BV, ax = ax, color = 'skyblue', fliersize=3)
-    ax.set_xlabel('')
-
-    fig.tight_layout()
-    if save:
-        plt.savefig(os.path.join(plot_dir, f'{title}_Boxplot.jpg'), optimize = True,
-                    box_inches = 'tight', dpi = 200)
-
-    plt.show()
-
-#def EmpiricalLogDistribution(data, bv_idx, eps = 1e-5):
-#    D = data.copy()
-#    if D[f'BIO{bv_idx}_Centroid'].any(0):
-#        D[f'BIO{bv_idx}_Centroid'] += eps
-#    D[f'BIO{bv_idx}_Centroid'] = np.log(D[f'BIO{bv_idx}_Centroid'])
-#    EmpiricalDistribution(D, bv_idx)
 
 
     
