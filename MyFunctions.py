@@ -141,11 +141,12 @@ def ImportData(year, resolution, data_dir, land=False, stats=False):
     
 
 
-def EmpiricalDistribution(data, figsize=(15, 8), show=True, save=False,
+def EmpiricalDistribution(data, NA_val=-100, figsize=(15, 8), show=True, save=False,
                           plot_dir='Output/Plots', title='ED', save_params={}):
     """
     INPUT:
      - data -> Data vector (Series or array-like) 
+     - NA_val -> Value used for NA.  
      - figsize -> Size of the figure object. (tuple of int: (width, height))
      - show -> Choose whether or not to display the plot. (bool) 
      - save -> Choose whether or not to save the plot. (bool)
@@ -162,7 +163,7 @@ def EmpiricalDistribution(data, figsize=(15, 8), show=True, save=False,
     SP.update(save_params)
 
     # Remove NA values if needed
-    NA_mask = data > -100
+    NA_mask = data != NA_val
     data = data[NA_mask]
     n_NA = (~NA_mask).sum()
     if n_NA > 0:
