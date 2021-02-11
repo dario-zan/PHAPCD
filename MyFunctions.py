@@ -53,7 +53,8 @@ def ArrangePlots(nplots, nrows, ncols, figsize, xsize=5, ysize=3.5):
 
 
 
-def ImportData(year, resolution, data_dir, land=False, stats=False):
+def ImportData(year, resolution, data_dir, land=False, stats=False,
+               drop_na=False):
     
     """
     INPUT:
@@ -64,6 +65,8 @@ def ImportData(year, resolution, data_dir, land=False, stats=False):
              at least one bioclimate variable available. (bool)
      - stats -> Choose whether or not to display some statistics about the data.
              (bool)
+     - drop_na -> Choose whether or not to drop rows with any NA value in the 
+             bioclimatic variables. (bool)
     
     OUTPUT:
      - hexagones -> Geodataframe containing all the available selected data. 
@@ -101,7 +104,7 @@ def ImportData(year, resolution, data_dir, land=False, stats=False):
         LC_land_idx = np.array(list(set(range(n))- set(LC_water_idx)))
         nl = len(LC_land_idx)
         
-        # Identify hexagons that have no bioclimate variable available
+        # Identify hexagons that have no bioclimate variable available (NA=-100)
         mask_NA_rows = eval(' & '.join([f'(BV.{col} == -100)'
                                         for col in BV.columns.values[1:]]))    
         BV_NA_idx = BV[mask_NA_rows].index.values
@@ -116,29 +119,42 @@ def ImportData(year, resolution, data_dir, land=False, stats=False):
         nl_a = len(land_A_idx)
         
         # Extract land hexagons with at least one bioclimate variable available.
-        hexagons = hexagons.iloc[land_A_idx]
+        hexagons = hexagons.iloc[land_A_idx].copy()
+             
+    if drop_na:
+        # Identify and remove rows with at least one bioclimate variable not
+        # available (NA=-100)
+        hexagons.replace(to_replace=-100, value=np.nan, inplace=True)
+        hexagons.dropna(axis='index', how='any', inplace=True)
+        n_aa = hexagons.shape[0]
         
-        if stats:
-            display(Markdown(
-                f"The dataset is composed of {n} hexagons, of which:<br>"
-                f"- {nl} correspond to lands ({100*nl/n:.4}%);<br>"
-                f"- {nw} correspond to water bodies ({100*nw/n:.4}%);<br>"
-                f"- {n_a} have at least one bioclimate variable available "
-                f"({100*n_a/n:.4}%);<br>"
-                f"- {n_na} have no bioclimate variable available "
-                f"({100*n_na/n:.4}%);<br>"
-                f"- Reducing to the land hexagons:<br>"
-                f"-- {nl_a} hexagons have at least one bioclimate variable "
-                f"available ({100*nl_a/nl:.4}%)."
-            ))
-        
-        return hexagons
-    else:
-        if stats:
-            display(Markdown(f"The dataset is composed of {n} hexagons."))
-                    
-        return hexagons
-    
+    if stats:
+        str2display = f"The entire dataset is composed of {n} hexagons."
+        if land:
+            str2display = str2display + f"""<ul>
+            <li> {nl} correspond to lands ({100*nl/n:.4}% of the entire dataset);
+            <li> {nw} correspond to water bodies ({100*nw/n:.4}% of the entire 
+            dataset);
+            <li> {n_a} have at least one bioclimate variable available
+            ({100*n_a/n:.4}% of the entire dataset);
+            <li> {n_na} have no bioclimate variable available
+            ({100*n_na/n:.4}% of the entire dataset).</ul>
+            When considering only the land hexagons: <ul>
+            <li> {nl_a} hexagons have at least one bioclimate variable available 
+            ({100*nl_a/nl:.4}% of the land hexagons and {100*nl_a/n:.4}% of the 
+            entire dataset);"""
+            if drop_na:
+                str2display = str2display + f"""
+                <li> {n_aa} hexagons have all the bioclimate variables available
+                ({100*n_aa/nl:.4}% of the land hexagons and {100*n_aa/n:.4}% of 
+                the entire dataset) </ul>"""
+        elif drop_na:
+            str2display = str2display + f"""<br>
+            Only {n_aa} hexagons have all the bioclimatic variables available
+            ({100*n_aa/n:.4}% of the entire dataset)."""
+        display(Markdown(str2display))
+            
+    return hexagons    
 
 
 def EmpiricalDistribution(data, NA_val=-100, figsize=(15, 8), show=True, save=False,
